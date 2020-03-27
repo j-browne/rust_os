@@ -1,0 +1,11 @@
+[package]
+name = "rust_os"
+version = "0.1.0"
+authors = ["Justin Browne <jebdude89@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+bootloader = "0.8.0"
+lazy_static = { version = "1.0", features = ["spin_no_std"] }
+spin = "0.5.2"
+volatile = "0.2.6"
