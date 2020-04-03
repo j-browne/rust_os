@@ -25,7 +25,11 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    WRITER.lock().write_fmt(args).unwrap();
+    use x86_64::instructions::interrupts;
+
+    interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args).unwrap();
+    });
 }
 
 #[allow(dead_code)]
@@ -50,7 +54,6 @@ pub enum Color {
     White = 15,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 struct ColorCode(u8);
@@ -60,7 +63,6 @@ impl ColorCode {
         ColorCode((background as u8) << 4 | (foreground as u8))
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
@@ -76,7 +78,6 @@ const BUFFER_WIDTH: usize = 80;
 struct Buffer {
     chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
 }
-
 
 pub struct Writer {
     column_position: usize,
@@ -114,7 +115,6 @@ impl Writer {
                 // not part of printable ASCII range
                 _ => self.write_byte(0xfe),
             }
-
         }
     }
 
@@ -144,5 +144,47 @@ impl fmt::Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.write_string(s);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{serial_print, serial_println};
+
+    #[test_case]
+    fn test_println_simple() {
+        serial_print!("test_println... ");
+        println!("test_println_simple output");
+        serial_println!("[ok]");
+    }
+
+    #[test_case]
+    fn test_println_many() {
+        serial_print!("test_println_many... ");
+        for _ in 0..200 {
+            println!("test_println_many output");
+        }
+        serial_println!("[ok]");
+    }
+
+    #[test_case]
+    fn test_println_output() {
+        use core::fmt::Write;
+        use x86_64::instructions::interrupts;
+
+        serial_print!("test_println_output... ");
+
+        let s = "Some test string that fits on a single line";
+        interrupts::without_interrupts(|| {
+            let mut writer = WRITER.lock();
+            writeln!(writer, "\n{}", s).unwrap();
+            for (i, c) in s.chars().enumerate() {
+                let screen_char = writer.buffer.chars[BUFFER_HEIGHT - 2][i].read();
+                assert_eq!(char::from(screen_char.ascii_character), c);
+            }
+        });
+
+        serial_println!("[ok]");
     }
 }
